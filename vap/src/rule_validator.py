@@ -163,7 +163,7 @@ class RuleValidator:
         workflow_violations = []
         
         for violation in violations:
-            if 'SECRET' in violation.constraint_id or 'SECURITY' in violation.constraint_id:
+            if any(cat in violation.constraint_id.upper() for cat in ['SECURITY', 'SQLI', 'CRYPTO', 'SECRET']):
                 security_penalties += violation.penalty
                 security_violations.append(violation)
             else:
@@ -176,7 +176,8 @@ class RuleValidator:
         
         # Weighted score
         weights = self.weights
-        security_weight = weights.get('security', 0.6)
+        # Mapping manifest weights to our internal categories
+        security_weight = weights.get('security', weights.get('security_logic', 0.6))
         workflow_weight = weights.get('workflow', 0.4)
         
         weighted_score = (security_score * security_weight) + (workflow_score * workflow_weight)
