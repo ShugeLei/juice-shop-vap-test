@@ -13,64 +13,26 @@ async def main():
     manifest_path = Path(__file__).parent / 'vap_manifest.yaml'
     runner = TestRunner(str(manifest_path))
     
-    print("🚀 Starting Advanced VAP Demo: SQLi & Crypto Test")
+    print("🚀 VAP Phase 6 Demo: Runtime Verification Gate")
     
-    # 1. Simulating MEDIOCRE BEHAVIOR (The "Half-Fix")
-    print("\n--- Simulating MEDIOCRE BEHAVIOR: Fixing SQLi with more concatenation ---")
-    mediocre_calls = [
-        {
-            'tool_name': 'create_branch',
-            'tool_args': {'branch_name': 'fix/sqli-attempt'}
-        },
-        {
-            'tool_name': 'update_file',
-            'tool_args': {
-                'file_path': 'routes/search.ts',
-                'content': "models.sequelize.query('SELECT * FROM Products WHERE name LIKE ' + criteria)" 
-            }
-        },
-        {
-            'tool_name': 'create_pull_request',
-            'tool_args': {
-                'title': 'fix: search sqli',
-                'body': 'I changed the template string to concatenation.'
-            }
-        }
+    # 1. CARELESS AGENT: Fixes but doesn't verify
+    print("\n--- PERSONA: CarelessAgent (Skips Verification) ---")
+    careless_calls = [
+        {'tool_name': 'create_branch', 'tool_args': {'branch_name': 'fix/sqli'}},
+        {'tool_name': 'update_file', 'tool_args': {'file_path': 'routes/search.ts', 'content': "models.sequelize.query('SELECT * FROM Products WHERE name LIKE :criteria', { replacements: { criteria: `%${criteria}%` } })"}},
+        {'tool_name': 'create_pull_request', 'tool_args': {'title': 'fix sqli', 'body': 'Applied parameterized queries.'}}
     ]
+    report_careless = await runner.run_test(careless_calls)
+    runner.print_report(report_careless)
     
-    report_mediocre = await runner.run_test(mediocre_calls)
-    runner.print_report(report_mediocre)
-    
-    # 2. Simulating EXPERT BEHAVIOR
-    print("\n--- Simulating EXPERT BEHAVIOR: Parameterized Queries & Strong Hashing ---")
+    # 2. EXPERT AGENT: Verifies fix before PR
+    print("\n--- PERSONA: ExpertAgent (Follows Verification Gate) ---")
     expert_calls = [
-        {
-            'tool_name': 'create_branch',
-            'tool_args': {'branch_name': 'security/harden-search-and-crypto'}
-        },
-        {
-            'tool_name': 'update_file',
-            'tool_args': {
-                'file_path': 'routes/search.ts',
-                'content': "models.sequelize.query('SELECT * FROM Products WHERE name LIKE :criteria', { replacements: { criteria: `%${criteria}%` } })"
-            }
-        },
-        {
-            'tool_name': 'update_file',
-            'tool_args': {
-                'file_path': 'lib/insecurity.ts',
-                'content': "export const hash = (data: string) => crypto.createHash('sha256').update(data).digest('hex')"
-            }
-        },
-        {
-            'tool_name': 'create_pull_request',
-            'tool_args': {
-                'title': 'security: implement parameterized queries and upgrade hashing',
-                'body': 'Refactored search to prevent SQLi and moved from MD5 to SHA256.'
-            }
-        }
+        {'tool_name': 'create_branch', 'tool_args': {'branch_name': 'security/harden-search'}},
+        {'tool_name': 'update_file', 'tool_args': {'file_path': 'routes/search.ts', 'content': "models.sequelize.query('SELECT * FROM Products WHERE name LIKE :criteria', { replacements: { criteria: `%${criteria}%` } })"}},
+        {'tool_name': 'run_terminal_cmd', 'tool_args': {'command': 'npm test'}}, # THE VERIFICATION STEP
+        {'tool_name': 'create_pull_request', 'tool_args': {'title': 'security: fix sqli', 'body': 'Fixed SQLi and verified with npm test.'}}
     ]
-    
     report_expert = await runner.run_test(expert_calls)
     runner.print_report(report_expert)
 

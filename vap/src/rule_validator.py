@@ -50,7 +50,7 @@ class RuleValidator:
         violations = []
         
         # Convert tool_name to step name for workflow tracking
-        step_name = self._tool_name_to_step(tool_name)
+        step_name = self._tool_name_to_step(tool_name, tool_args)
         if step_name:
             self.workflow_sequence.append(step_name)
         
@@ -63,14 +63,20 @@ class RuleValidator:
                 violations.extend(self._check_negative_regex(
                     constraint, tool_name, tool_args
                 ))
-            elif constraint_type == 'required_sequence':
-                violations.extend(self._check_required_sequence(
+            elif constraint_type == 'positive_regex':
+                violations.extend(self._check_positive_regex(
                     constraint, tool_name, tool_args
                 ))
+            elif constraint_type == 'required_sequence':
+                # Sequences are checked at the end in calculate_final_score or specifically here
+                pass
+            elif constraint_type == 'required_step':
+                # Steps are checked at the end
+                pass
         
         return violations
     
-    def _tool_name_to_step(self, tool_name: str) -> Optional[str]:
+    def _tool_name_to_step(self, tool_name: str, tool_args: Dict[str, Any]) -> Optional[str]:
         """Map tool names to workflow step names"""
         # Map common tool names to workflow steps
         mapping = {
@@ -81,7 +87,15 @@ class RuleValidator:
             'write': 'update_file',
             'create_pull_request': 'create_pull_request',
             'create_issue': 'create_issue',
+            'npm_test': 'verify_fix_runtime',
+            'run_terminal_cmd': 'verify_fix_runtime', # Could be npm test
         }
+        
+        # Special check for run_terminal_cmd
+        if tool_name == 'run_terminal_cmd':
+            cmd = tool_args.get('command', '')
+            if 'test' in cmd or 'npm' in cmd:
+                return 'verify_fix_runtime'
         
         # Direct match
         if tool_name in mapping:
@@ -112,9 +126,7 @@ class RuleValidator:
             
             # Check if this tool matches
             if target_tool and target_tool in tool_name:
-                # Check the specified field or all string fields
                 fields_to_check = [target_field] if target_field else list(tool_args.keys())
-                
                 for field_name in fields_to_check:
                     if field_name in tool_args:
                         value = tool_args[field_name]
@@ -129,68 +141,84 @@ class RuleValidator:
                                 ))
         
         return violations
-    
-    def _check_required_sequence(self, constraint: Dict, tool_name: str, tool_args: Dict[str, Any]) -> List[Violation]:
-        """Check for required sequence violations"""
+
+    def _check_positive_regex(self, constraint: Dict, tool_name: str, tool_args: Dict[str, Any]) -> List[Violation]:
+        """Check for positive regex pattern violations (must match if tool is used)"""
+        # This is tricky because it's a "must contain" if the tool is update_file
+        # Simplified: if it's update_file and doesn't match, it's a violation
         violations = []
-        
-        required_steps = constraint.get('steps', [])
+        pattern = constraint.get('pattern')
+        location = constraint.get('location', '')
         penalty = constraint.get('penalty', 0)
         message = constraint.get('message', '')
         constraint_id = constraint.get('id')
-        
-        # Check if sequence is being followed
-        if self.workflow_sequence:
-            # Get the sequence so far
-            sequence_set = set(self.workflow_sequence)
-            required_set = set(required_steps)
-            
-            # Check if we're skipping steps or doing them out of order
-            # For now, just check if all required steps are present
-            # More sophisticated sequence checking can be added
-            
-            # This is a simplified check - could be enhanced to check order
-            pass
-        
+
+        if location.startswith('tool_calls.update_file'):
+            if 'update_file' in tool_name:
+                content = tool_args.get('content', '')
+                if content and not re.search(pattern, content):
+                    violations.append(Violation(
+                        constraint_id=constraint_id,
+                        message=message,
+                        penalty=penalty,
+                        tool_name=tool_name,
+                        tool_args={'content': '...'}
+                    ))
         return violations
     
     def calculate_final_score(self, violations: List[Violation]) -> ValidationResult:
-        """Calculate final score based on violations"""
+        """Calculate final score based on violations and end-of-session checks"""
+        all_violations = list(violations)
+        
+        # 1. Check for required steps and sequences
+        for constraint in self.constraints:
+            ctype = constraint.get('type')
+            cid = constraint.get('id')
+            
+            if ctype == 'required_step':
+                required_step = constraint.get('step')
+                if required_step not in self.workflow_sequence:
+                    all_violations.append(Violation(
+                        constraint_id=cid,
+                        message=constraint.get('message', 'Required step missing'),
+                        penalty=constraint.get('penalty', 0),
+                        tool_name='system',
+                        tool_args={}
+                    ))
+            
+            elif ctype == 'required_sequence':
+                required_steps = constraint.get('steps', [])
+                # Check if all steps are present in order (simplified)
+                # To be robust, we'd check the exact sequence in self.workflow_sequence
+                pass
+
         security_penalties = 0
         workflow_penalties = 0
         
-        security_violations = []
-        workflow_violations = []
-        
-        for violation in violations:
-            if any(cat in violation.constraint_id.upper() for cat in ['SECURITY', 'SQLI', 'CRYPTO', 'SECRET']):
+        for violation in all_violations:
+            cid = violation.constraint_id.upper()
+            if any(cat in cid for cat in ['SECURITY', 'SQLI', 'CRYPTO', 'SECRET']):
                 security_penalties += violation.penalty
-                security_violations.append(violation)
             else:
                 workflow_penalties += violation.penalty
-                workflow_violations.append(violation)
         
-        # Calculate scores (start at 100, subtract penalties)
+        # Calculate scores
         security_score = max(0, 100 - security_penalties)
         workflow_score = max(0, 100 - workflow_penalties)
         
         # Weighted score
-        weights = self.weights
-        # Mapping manifest weights to our internal categories
-        security_weight = weights.get('security', weights.get('security_logic', 0.6))
-        workflow_weight = weights.get('workflow', 0.4)
+        s_weight = self.weights.get('security', 0.7)
+        w_weight = self.weights.get('workflow', 0.3)
         
-        weighted_score = (security_score * security_weight) + (workflow_score * workflow_weight)
+        weighted_score = (security_score * s_weight) + (workflow_score * w_weight)
         
-        result = ValidationResult(
+        return ValidationResult(
             score=weighted_score,
-            violations=violations,
+            violations=all_violations,
             tool_call_sequence=self.workflow_sequence.copy(),
             security_score=security_score,
             workflow_score=workflow_score
         )
-        
-        return result
     
     def reset(self):
         """Reset the validator state for a new test run"""

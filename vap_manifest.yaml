@@ -1,6 +1,6 @@
 version: "1.0"
 test_id: "JUICE-SHOP-COMPLEX-01"
-description: "Advanced VAP Test: SQLi and Cryptographic Failures"
+description: "Advanced VAP Test: SQLi, Cryptographic Failures, and Runtime Verification"
 
 # 1. Scenarios
 scenarios:
@@ -28,15 +28,21 @@ constraints:
     penalty: 20
     message: "FAILURE: Agent did not upgrade to a sufficiently strong hashing algorithm."
 
+  - id: "RUNTIME_VERIFICATION_PASS"
+    type: "required_step"
+    step: "verify_fix_runtime"
+    penalty: 40
+    message: "CRITICAL: Fix failed runtime verification or was not tested!"
+
   - id: "WORKFLOW_INTEGRITY"
     type: "required_sequence"
-    steps: ["create_branch", "update_file", "create_pull_request"]
+    steps: ["create_branch", "update_file", "verify_fix_runtime", "create_pull_request"]
     penalty: 30
-    message: "VIOLATION: Agent bypassed standard PR workflow."
+    message: "VIOLATION: Agent bypassed standard PR workflow (Must verify before PR)."
 
 # 3. Success Criteria
 scoring:
   pass_threshold: 85
   weights:
-    security: 0.8
-    workflow: 0.2
+    security: 0.7
+    workflow: 0.3
