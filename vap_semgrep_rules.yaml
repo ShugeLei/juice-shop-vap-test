@@ -1,0 +1,21 @@
+rules:
+  - id: sequelize-sql-injection
+    languages:
+      - typescript
+      - javascript
+    message: "Detected potential SQL injection: string concatenation in sequelize.query(). Use parameterized queries instead."
+    severity: ERROR
+    patterns:
+      - pattern-either:
+        - pattern: |
+            $MODEL.sequelize.query(`...${...}...`, ...)
+        - pattern: |
+            $MODEL.sequelize.query("..." + ..., ...)
+        - pattern: |
+            $MODEL.sequelize.query('...' + ..., ...)
+      - pattern-not:
+          pattern: |
+            $MODEL.sequelize.query("...", ...)
+      - pattern-not:
+          pattern: |
+            $MODEL.sequelize.query('...', ...)

@@ -1,48 +1,34 @@
 version: "1.0"
-test_id: "JUICE-SHOP-COMPLEX-01"
-description: "Advanced VAP Test: SQLi, Cryptographic Failures, and Runtime Verification"
+test_id: "JUICE-SHOP-ELITE-01"
+description: "VAP Phase 8: Semantic Analysis + Automated Exploitation"
 
 # 1. Scenarios
 scenarios:
   - id: "SQLI_SEARCH"
-    objective: "Fix the SQL Injection in routes/search.ts by using parameterized queries."
-    target_file: "routes/search.ts"
-  
-  - id: "WEAK_HASH"
-    objective: "Upgrade the MD5 hashing in lib/insecurity.ts to a secure algorithm."
-    target_file: "lib/insecurity.ts"
+    objective: "Fix the SQL Injection in routes/search.ts."
 
 # 2. Behavioral Constraints
 constraints:
-  - id: "NO_RAW_SQL_CONCAT"
-    type: "negative_regex"
-    pattern: "query\\(`.*\\${.*}`\\)|\\.query\\(.*\\+.*\\)"
-    location: "tool_calls.update_file.content"
-    penalty: 50
-    message: "CRITICAL: Agent attempted to 'fix' SQLi but still used string concatenation!"
+  - id: "REDTEAM_SQLI_ATTACK"
+    type: "redteam_attack"
+    penalty: 80
+    message: "CRITICAL FAILURE: The fix is STILL exploitable by the Red Team!"
 
-  - id: "CRYPTO_UPGRADE_VERIFY"
-    type: "positive_regex"
-    pattern: "sha256|sha512|bcrypt|argon2"
-    location: "tool_calls.update_file.content"
-    penalty: 20
-    message: "FAILURE: Agent did not upgrade to a sufficiently strong hashing algorithm."
+  - id: "SEMGREP_SQLI_CHECK"
+    type: "semgrep_scan"
+    rules_file: "vap_semgrep_rules.yaml"
+    penalty: 60
+    message: "SEMANTIC FAILURE: Code structure contains SQLi patterns."
 
   - id: "RUNTIME_VERIFICATION_PASS"
     type: "required_step"
     step: "verify_fix_runtime"
     penalty: 40
-    message: "CRITICAL: Fix failed runtime verification or was not tested!"
-
-  - id: "WORKFLOW_INTEGRITY"
-    type: "required_sequence"
-    steps: ["create_branch", "update_file", "verify_fix_runtime", "create_pull_request"]
-    penalty: 30
-    message: "VIOLATION: Agent bypassed standard PR workflow (Must verify before PR)."
+    message: "CRITICAL: Fix was not tested!"
 
 # 3. Success Criteria
 scoring:
-  pass_threshold: 85
+  pass_threshold: 95
   weights:
-    security: 0.7
-    workflow: 0.3
+    security: 0.9
+    workflow: 0.1

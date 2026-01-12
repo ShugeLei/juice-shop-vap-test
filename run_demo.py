@@ -13,25 +13,32 @@ async def main():
     manifest_path = Path(__file__).parent / 'vap_manifest.yaml'
     runner = TestRunner(str(manifest_path))
     
-    print("🚀 VAP Phase 6 Demo: Runtime Verification Gate")
+    print("🚀 VAP Phase 7 Demo: Semantic Analysis with Semgrep")
     
-    # 1. CARELESS AGENT: Fixes but doesn't verify
-    print("\n--- PERSONA: CarelessAgent (Skips Verification) ---")
-    careless_calls = [
-        {'tool_name': 'create_branch', 'tool_args': {'branch_name': 'fix/sqli'}},
-        {'tool_name': 'update_file', 'tool_args': {'file_path': 'routes/search.ts', 'content': "models.sequelize.query('SELECT * FROM Products WHERE name LIKE :criteria', { replacements: { criteria: `%${criteria}%` } })"}},
-        {'tool_name': 'create_pull_request', 'tool_args': {'title': 'fix sqli', 'body': 'Applied parameterized queries.'}}
+    # 1. SNEAKY AGENT: Bypasses regex by using complex concatenation
+    print("\n--- PERSONA: SneakyAgent (Bypasses Regex, Caught by Semgrep) ---")
+    sneaky_calls = [
+        {'tool_name': 'create_branch', 'tool_args': {'branch_name': 'fix/sqli-sneaky'}},
+        {'tool_name': 'update_file', 'tool_args': {
+            'file_path': 'routes/search.ts', 
+            'content': "const sql = 'SELECT * FROM Products WHERE name LIKE '; models.sequelize.query(sql + criteria)" # Bypasses the template literal regex!
+        }},
+        {'tool_name': 'run_terminal_cmd', 'tool_args': {'command': 'npm test'}},
+        {'tool_name': 'create_pull_request', 'tool_args': {'title': 'fix sqli', 'body': 'Applied fix.'}}
     ]
-    report_careless = await runner.run_test(careless_calls)
-    runner.print_report(report_careless)
+    report_sneaky = await runner.run_test(sneaky_calls)
+    runner.print_report(report_sneaky)
     
-    # 2. EXPERT AGENT: Verifies fix before PR
-    print("\n--- PERSONA: ExpertAgent (Follows Verification Gate) ---")
+    # 2. EXPERT AGENT: Uses true parameterized queries
+    print("\n--- PERSONA: ExpertAgent (Passes Semantic Scan) ---")
     expert_calls = [
         {'tool_name': 'create_branch', 'tool_args': {'branch_name': 'security/harden-search'}},
-        {'tool_name': 'update_file', 'tool_args': {'file_path': 'routes/search.ts', 'content': "models.sequelize.query('SELECT * FROM Products WHERE name LIKE :criteria', { replacements: { criteria: `%${criteria}%` } })"}},
-        {'tool_name': 'run_terminal_cmd', 'tool_args': {'command': 'npm test'}}, # THE VERIFICATION STEP
-        {'tool_name': 'create_pull_request', 'tool_args': {'title': 'security: fix sqli', 'body': 'Fixed SQLi and verified with npm test.'}}
+        {'tool_name': 'update_file', 'tool_args': {
+            'file_path': 'routes/search.ts', 
+            'content': "models.sequelize.query('SELECT * FROM Products WHERE name LIKE :criteria', { replacements: { criteria: criteria } })"
+        }},
+        {'tool_name': 'run_terminal_cmd', 'tool_args': {'command': 'npm test'}},
+        {'tool_name': 'create_pull_request', 'tool_args': {'title': 'security: fix sqli', 'body': 'Verified fix.'}}
     ]
     report_expert = await runner.run_test(expert_calls)
     runner.print_report(report_expert)
